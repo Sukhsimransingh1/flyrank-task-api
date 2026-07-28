@@ -87,41 +87,52 @@ def health():
 @app.get("/tasks")
 def get_tasks():
 
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg.connect(DATABASE_URL)
+
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM tasks")
+    cursor.execute(
+        """
+        SELECT id, title, done
+        FROM tasks
+        ORDER BY id
+        """
+    )
 
     rows = cursor.fetchall()
 
+    cursor.close()
     conn.close()
 
     return [
         {
-            "id": row["id"],
-            "title": row["title"],
-            "done": bool(row["done"])
+            "id": row[0],
+            "title": row[1],
+            "done": row[2]
         }
         for row in rows
     ]
-
 
 # Get Task By ID
 @app.get("/tasks/{task_id}")
 def get_task(task_id: int):
 
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg.connect(DATABASE_URL)
+
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT * FROM tasks WHERE id = ?",
+        """
+        SELECT id, title, done
+        FROM tasks
+        WHERE id = %s
+        """,
         (task_id,)
     )
 
     row = cursor.fetchone()
 
+    cursor.close()
     conn.close()
 
     if row is None:
@@ -131,11 +142,10 @@ def get_task(task_id: int):
         )
 
     return {
-        "id": row["id"],
-        "title": row["title"],
-        "done": bool(row["done"])
+        "id": row[0],
+        "title": row[1],
+        "done": row[2]
     }
-
 
 # Create Task
 @app.post("/tasks", status_code=status.HTTP_201_CREATED)
