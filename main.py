@@ -159,54 +159,62 @@ def create_task(task: TaskCreate):
             detail="Title cannot be empty"
         )
 
-    conn = sqlite3.connect(DATABASE)
+    conn = psycopg.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     cursor.execute(
-        "INSERT INTO tasks (title, done) VALUES (?, ?)",
-        (title, 0)
+        """
+        INSERT INTO tasks (title, done)
+        VALUES (%s, %s)
+        RETURNING id, title, done
+        """,
+        (title, False)
     )
+
+    new_task = cursor.fetchone()
 
     conn.commit()
 
-    new_id = cursor.lastrowid
-
+    cursor.close()
     conn.close()
 
     return {
-        "id": new_id,
-        "title": title,
-        "done": False
+        "id": new_task[0],
+        "title": new_task[1],
+        "done": new_task[2]
     }
-
-
 # Update Task
 @app.put("/tasks/{task_id}")
 def update_task(task_id: int, updated_task: TaskUpdate):
 
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT * FROM tasks WHERE id = ?",
+        """
+        SELECT id, title, done
+        FROM tasks
+        WHERE id=%s
+        """,
         (task_id,)
     )
 
     task = cursor.fetchone()
 
     if task is None:
+        cursor.close()
         conn.close()
         raise HTTPException(
             status_code=404,
             detail=f"Task {task_id} not found"
         )
 
-    title = task["title"]
-    done = task["done"]
+    title = task[1]
+    done = task[2]
 
     if updated_task.title is not None:
         if updated_task.title.strip() == "":
+            cursor.close()
             conn.close()
             raise HTTPException(
                 status_code=400,
@@ -215,26 +223,28 @@ def update_task(task_id: int, updated_task: TaskUpdate):
         title = updated_task.title.strip()
 
     if updated_task.done is not None:
-        done = int(updated_task.done)
+        done = updated_task.done
 
     cursor.execute(
         """
         UPDATE tasks
-        SET title = ?, done = ?
-        WHERE id = ?
+        SET title=%s,
+            done=%s
+        WHERE id=%s
         """,
         (title, done, task_id)
     )
 
     conn.commit()
+
+    cursor.close()
     conn.close()
 
     return {
         "id": task_id,
         "title": title,
-        "done": bool(done)
+        "done": done
     }
-
 
 # Delete Task
 @app.delete(
@@ -243,29 +253,33 @@ def update_task(task_id: int, updated_task: TaskUpdate):
 )
 def delete_task(task_id: int):
 
-    conn = sqlite3.connect(DATABASE)
+    conn = psycopg.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT * FROM tasks WHERE id = ?",
+        "SELECT id FROM tasks WHERE id=%s",
         (task_id,)
     )
 
     task = cursor.fetchone()
 
     if task is None:
+        cursor.close()
         conn.close()
+
         raise HTTPException(
             status_code=404,
             detail=f"Task {task_id} not found"
         )
 
     cursor.execute(
-        "DELETE FROM tasks WHERE id = ?",
+        "DELETE FROM tasks WHERE id=%s",
         (task_id,)
     )
 
     conn.commit()
+
+    cursor.close()
     conn.close()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
