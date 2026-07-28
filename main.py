@@ -2,7 +2,12 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
-import sqlite3
+import os
+import psycopg
+from dotenv import load_dotenv
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 app = FastAPI(
     title="Task API",
@@ -10,7 +15,7 @@ app = FastAPI(
     version="2.0"
 )
 
-DATABASE = "tasks.db"
+
 
 
 # Request Models
@@ -25,33 +30,39 @@ class TaskUpdate(BaseModel):
 
 # Database Initialization
 def init_db():
-    conn = sqlite3.connect(DATABASE)
+    conn = psycopg.connect(DATABASE_URL)
+
     cursor = conn.cursor()
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             title TEXT NOT NULL,
-            done INTEGER NOT NULL
+            done BOOLEAN NOT NULL
         )
     """)
 
     cursor.execute("SELECT COUNT(*) FROM tasks")
+
     count = cursor.fetchone()[0]
 
     if count == 0:
         cursor.executemany(
-            "INSERT INTO tasks (title, done) VALUES (?, ?)",
+            """
+            INSERT INTO tasks (title, done)
+            VALUES (%s, %s)
+            """,
             [
-                ("Learn FastAPI", 0),
-                ("Complete FlyRank Assignment", 0),
-                ("Practice Python", 1)
+                ("Learn FastAPI", False),
+                ("Complete FlyRank Assignment", False),
+                ("Practice Python", True),
             ]
         )
 
     conn.commit()
-    conn.close()
 
+    cursor.close()
+    conn.close()
 
 init_db()
 
